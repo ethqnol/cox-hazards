@@ -1,0 +1,32 @@
+[package]
+name = "cox-hazards"
+version = "0.1.0"
+edition = "2024"
+authors = ["Ethan Wu <ethqnol@gmail.com>"]
+description = "A Rust library for Cox proportional hazards regression with elastic net regularization"
+license = "MIT"
+keywords = ["survival-analysis", "cox-regression", "statistics", "machine-learning", "data-science", "R"]
+categories = ["science", "algorithms"]
+repository = "https://github.com/ethqnol/cox-hazards"
+
+[dependencies]
+ndarray = "0.15"
+nalgebra = "0.32"
+argmin = "0.8"
+argmin-math = "0.3"
+thiserror = "1.0"
+rayon = { version = "1.7", optional = true }
+approx = "0.5"
+
+[dev-dependencies]
+criterion = "0.5"
+proptest = "1.2"
+rand = "0.8"
+
+[[bench]]
+name = "cox_benchmark"
+harness = false
+
+[features]
+default = ["parallel"]
+parallel = ["rayon"]

@@ -1,0 +1,15 @@
+
+target/
+Cargo.lock
+
+.cargo/config.toml
+
+.idea/ # IntelliJ IDEA
+.vscode/ # VS Code
+.zed
+*.iml # IntelliJ IDEA module files
+.DS_Store # macOS specific
+Thumbs.db # Windows specific
+*.swp # Vim swap files
+*.bak # Backup files
+*.log # Log files
