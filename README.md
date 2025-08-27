@@ -1,8 +1,6 @@
 # Cox Proportional Hazards Regression
 
 [![Crates.io](https://img.shields.io/crates/v/cox-hazards.svg)](https://crates.io/crates/cox-hazards)
-[![Documentation](https://docs.rs/cox-hazards/badge.svg)](https://docs.rs/cox-hazards)
-[![Build Status](https://github.com/yourusername/cox-hazards/workflows/CI/badge.svg)](https://github.com/yourusername/cox-hazards/actions)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/yourusername/cox-hazards/blob/main/LICENSE)
 
 A comprehensive, well-tested Rust library for Cox proportional hazards regression with elastic net regularization. This crate provides robust survival analysis capabilities with modern optimization techniques.
