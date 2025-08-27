@@ -5,7 +5,7 @@ edition = "2024"
 authors = ["Ethan Wu <ethqnol@gmail.com>"]
 description = "A Rust library for Cox proportional hazards regression with elastic net regularization"
 license = "MIT"
-keywords = ["survival-analysis", "cox-regression", "statistics", "machine-learning", "data-science", "R"]
+keywords = ["survival-analysis", "cox-regression", "statistics", "machine-learning", "data-science"]
 categories = ["science", "algorithms"]
 repository = "https://github.com/ethqnol/cox-hazards"
 
