@@ -2,7 +2,7 @@ use ndarray::{Array1, Array2, ArrayView1, ArrayView2};
 use crate::{
     data::SurvivalData,
     error::{CoxError, Result},
-    optimization::{CoxOptimizer, OptimizationConfig},
+    optimization::{CoxOptimizer, OptimizationConfig, OptimizerType},
 };
 
 /// cox model w/ elastic net regularization
@@ -15,6 +15,11 @@ pub struct CoxModel {
     tolerance: f64,                     // convergence threshold
     fitted: bool,                       // have we been fit yet?
     feature_names: Option<Vec<String>>, // optional feature labels
+    optimizer_type: OptimizerType,      // which optimizer to use
+    learning_rate: f64,                 // learning rate for Adam
+    beta1: f64,                         // Adam momentum parameter
+    beta2: f64,                         // Adam RMSprop parameter
+    epsilon: f64,                       // Adam numerical stability
 }
 
 impl Default for CoxModel {
@@ -27,6 +32,11 @@ impl Default for CoxModel {
             tolerance: 1e-6,
             fitted: false,
             feature_names: None,
+            optimizer_type: OptimizerType::NewtonRaphson,
+            learning_rate: 0.001,
+            beta1: 0.9,
+            beta2: 0.999,
+            epsilon: 1e-8,
         }
     }
 }
@@ -77,6 +87,31 @@ impl CoxModel {
         self
     }
     
+    /// choose which optimizer to use
+    pub fn with_optimizer(mut self, optimizer: OptimizerType) -> Self {
+        self.optimizer_type = optimizer;
+        self
+    }
+    
+    /// set learning rate for Adam optimizer
+    pub fn with_learning_rate(mut self, lr: f64) -> Self {
+        self.learning_rate = lr.max(0.0);
+        self
+    }
+    
+    /// set Adam momentum parameters (beta1, beta2)
+    pub fn with_adam_params(mut self, beta1: f64, beta2: f64) -> Self {
+        self.beta1 = beta1.clamp(0.0, 1.0);
+        self.beta2 = beta2.clamp(0.0, 1.0);
+        self
+    }
+    
+    /// set Adam numerical stability parameter
+    pub fn with_epsilon(mut self, eps: f64) -> Self {
+        self.epsilon = eps.max(0.0);
+        self
+    }
+    
     /// fit the model to data - this does the actual work
     pub fn fit(&mut self, data: &SurvivalData) -> Result<&mut Self> {
         let config = OptimizationConfig {
@@ -84,9 +119,14 @@ impl CoxModel {
             l2_penalty: self.l2_penalty,
             max_iterations: self.max_iterations,
             tolerance: self.tolerance,
+            optimizer_type: self.optimizer_type,
+            learning_rate: self.learning_rate,
+            beta1: self.beta1,
+            beta2: self.beta2,
+            epsilon: self.epsilon,
         };
         
-        let optimizer = CoxOptimizer::new(config);
+        let mut optimizer = CoxOptimizer::new(config);
         self.coefficients = Some(optimizer.optimize(data)?);
         self.fitted = true;
         
@@ -282,5 +322,49 @@ mod tests {
         // Wrong number of features
         let wrong_covariates = Array2::zeros((5, 2)); // Should be 3 features
         assert!(model.predict(wrong_covariates.view()).is_err());
+    }
+    
+    #[test]
+    fn test_adam_optimizer() {
+        let data = create_test_data();
+        let mut model = CoxModel::new()
+            .with_optimizer(OptimizerType::Adam)
+            .with_learning_rate(0.1)
+            .with_adam_params(0.9, 0.999)
+            .with_tolerance(1e-4)
+            .with_max_iterations(500);
+        
+        let result = model.fit(&data);
+        assert!(result.is_ok());
+        assert!(model.is_fitted());
+        
+        let coefs = model.coefficients().unwrap();
+        assert_eq!(coefs.len(), 3);
+        assert!(coefs.iter().all(|&x| x.is_finite()));
+    }
+    
+    #[test]
+    fn test_adam_with_regularization() {
+        let data = create_test_data();
+        let mut model = CoxModel::new()
+            .with_optimizer(OptimizerType::Adam)
+            .with_learning_rate(0.05)
+            .with_l1_penalty(0.01)
+            .with_l2_penalty(0.01)
+            .with_tolerance(1e-4)
+            .with_max_iterations(800);
+        
+        let result = model.fit(&data);
+        assert!(result.is_ok());
+        assert!(model.is_fitted());
+        
+        let coefs = model.coefficients().unwrap();
+        assert_eq!(coefs.len(), 3);
+        assert!(coefs.iter().all(|&x| x.is_finite()));
+        
+        // Test predictions still work
+        let test_covariates = Array2::zeros((2, 3));
+        let predictions = model.predict(test_covariates.view());
+        assert!(predictions.is_ok());
     }
 }
