@@ -2,7 +2,7 @@
 
 [![Crates.io](https://img.shields.io/crates/v/cox-hazards.svg)](https://crates.io/crates/cox-hazards)
 [![Documentation](https://docs.rs/cox-hazards/badge.svg)](https://docs.rs/cox-hazards)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/yourusername/cox-hazards/blob/main/LICENSE)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/ethqnol/cox-hazards/blob/main/LICENSE)
 
 A comprehensive, well-tested Rust library for Cox proportional hazards regression with elastic net regularization. This crate provides robust survival analysis capabilities with modern optimization techniques.
 
@@ -10,7 +10,7 @@ A comprehensive, well-tested Rust library for Cox proportional hazards regressio
 
 - **Cox Proportional Hazards Model**: Full implementation with partial likelihood optimization
 - **Elastic Net Regularization**: L1 (Lasso) and L2 (Ridge) penalties for feature selection and regularization
-- **Multiple Optimization Algorithms**: Newton-Raphson and coordinate descent solvers
+- **Multiple Optimization Algorithms**: Newton-Raphson, coordinate descent, and Adam optimizers
 - **Comprehensive Metrics**: C-index, Harrell's C-index, log-likelihood, AIC, BIC
 - **Survival Predictions**: Risk scores, hazard ratios, and survival probabilities
 - **Robust Data Handling**: Proper treatment of censored observations and tied event times
@@ -23,7 +23,7 @@ Add this to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-cox-hazards = "0.1.0"
+cox-hazards = "0.2.0"
 ```
 
 ### Basic Usage
@@ -78,6 +78,28 @@ let mut elastic_model = CoxModel::new()
 ridge_model.fit(&data)?;
 lasso_model.fit(&data)?;
 elastic_model.fit(&data)?;
+```
+
+### Adam Optimizer (New in v0.2.0)
+
+```rust
+use cox_hazards::{CoxModel, OptimizerType};
+
+// Use Adam optimizer for large datasets or noisy gradients
+let mut adam_model = CoxModel::new()
+    .with_optimizer(OptimizerType::Adam)
+    .with_learning_rate(0.1)
+    .with_adam_params(0.9, 0.999)  // beta1, beta2
+    .with_l2_penalty(0.01);
+
+adam_model.fit(&data)?;
+
+// Adam works well with regularization
+let mut regularized_adam = CoxModel::new()
+    .with_optimizer(OptimizerType::Adam)
+    .with_elastic_net(0.5, 0.1)
+    .with_learning_rate(0.05)
+    .with_max_iterations(1000);
 ```
 
 ### Model Evaluation
@@ -146,6 +168,9 @@ let survival_probs = advanced_model.predict_survival(
 - `with_l1_penalty(penalty)`: Set Lasso regularization
 - `with_l2_penalty(penalty)`: Set Ridge regularization  
 - `with_elastic_net(alpha, penalty)`: Set elastic net parameters
+- `with_optimizer(optimizer_type)`: Choose optimization algorithm
+- `with_learning_rate(rate)`: Set Adam learning rate
+- `with_adam_params(beta1, beta2)`: Configure Adam momentum parameters
 - `fit(data)`: Train the model
 - `predict(covariates)`: Get risk scores
 - `predict_hazard_ratios(covariates)`: Get hazard ratios
@@ -255,9 +280,9 @@ If you use this library in academic work, please cite:
 ```bibtex
 @software{cox_hazards_rust,
   title = {cox-hazards: Cox Proportional Hazards Regression in Rust},
-  author = {Your Name},
+  author = {Ethan Wu},
   year = {2024},
-  url = {https://github.com/yourusername/cox-hazards},
+  url = {https://github.com/ethqnol/cox-hazards},
 }
 ```
 

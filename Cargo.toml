@@ -1,6 +1,6 @@
 [package]
 name = "cox-hazards"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 authors = ["Ethan Wu <ethqnol@gmail.com>"]
 description = "A Rust library for Cox proportional hazards regression with elastic net regularization"
