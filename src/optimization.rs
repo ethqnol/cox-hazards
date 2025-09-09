@@ -10,6 +10,7 @@ pub enum OptimizerType {
     NewtonRaphson,
     CoordinateDescent,
     Adam,
+    RMSprop,
 }
 
 
@@ -23,8 +24,8 @@ pub struct OptimizationConfig {
     pub optimizer_type: OptimizerType,
     pub learning_rate: f64,
     pub beta1: f64,  // Adam momentum parameter
-    pub beta2: f64,  // Adam RMSprop parameter
-    pub epsilon: f64, // Adam numerical stability
+    pub beta2: f64,  // Adam/RMSprop decay parameter for second moment
+    pub epsilon: f64, // Adam/RMSprop numerical stability
 }
 
 impl Default for OptimizationConfig {
@@ -61,10 +62,25 @@ impl AdamState {
     }
 }
 
+/// RMSprop optimizer state for second moment tracking
+#[derive(Debug, Clone)]
+struct RMSpropState {
+    v: Array1<f64>,  // Second moment estimate (moving average of squared gradients)
+}
+
+impl RMSpropState {
+    fn new(n_features: usize) -> Self {
+        Self {
+            v: Array1::zeros(n_features),
+        }
+    }
+}
+
 /// Cox proportional hazards optimizer with elastic net regularization
 pub struct CoxOptimizer {
     config: OptimizationConfig,
     adam_state: Option<AdamState>,
+    rmsprop_state: Option<RMSpropState>,
 }
 
 impl CoxOptimizer {
@@ -72,6 +88,7 @@ impl CoxOptimizer {
         Self { 
             config,
             adam_state: None,
+            rmsprop_state: None,
         }
     }
     
@@ -83,6 +100,9 @@ impl CoxOptimizer {
         match self.config.optimizer_type {
             OptimizerType::Adam => {
                 self.adam_optimize(data, &mut beta)?;
+            }
+            OptimizerType::RMSprop => {
+                self.rmsprop_optimize(data, &mut beta)?;
             }
             OptimizerType::CoordinateDescent => {
                 self.coordinate_descent_optimize(data, &mut beta)?;
@@ -159,6 +179,97 @@ impl CoxOptimizer {
                 // Update parameters with clipping to prevent exploding gradients
                 for i in 0..n_features {
                     let update = self.config.learning_rate * m_hat[i] / (v_hat[i].sqrt() + self.config.epsilon);
+                    // Clip updates to reasonable range
+                    let clipped_update = update.max(-1.0).min(1.0);
+                    beta[i] += clipped_update;
+                    
+                    // Prevent coefficients from becoming too large
+                    beta[i] = beta[i].max(-10.0).min(10.0);
+                }
+            }
+            
+            // Check for numerical issues
+            if beta.iter().any(|&b| !b.is_finite()) {
+                break; // Stop if beta becomes invalid
+            }
+            
+            // Check convergence
+            let loglik = self.compute_log_likelihood(data, beta)?;
+            let penalized_loglik = loglik - 
+                0.5 * self.config.l2_penalty * beta.dot(beta) - 
+                self.config.l1_penalty * beta.mapv(f64::abs).sum();
+            
+            // Check for convergence or improvement
+            if (penalized_loglik - prev_loglik).abs() < self.config.tolerance {
+                break;
+            }
+            
+            // Track best likelihood and early stopping
+            if penalized_loglik > best_loglik {
+                best_loglik = penalized_loglik;
+                no_improvement_count = 0;
+            } else {
+                no_improvement_count += 1;
+                if no_improvement_count >= max_no_improvement {
+                    break; // Early stopping if no improvement
+                }
+            }
+            
+            prev_loglik = penalized_loglik;
+        }
+        
+        Ok(())
+    }
+    
+    /// RMSprop optimization algorithm for Cox regression
+    fn rmsprop_optimize(&mut self, data: &SurvivalData, beta: &mut Array1<f64>) -> Result<()> {
+        let n_features = data.n_features();
+        
+        // Initialize RMSprop state if not already done
+        if self.rmsprop_state.is_none() {
+            self.rmsprop_state = Some(RMSpropState::new(n_features));
+        }
+        
+        let mut prev_loglik = f64::NEG_INFINITY;
+        let mut best_loglik = f64::NEG_INFINITY;
+        let mut no_improvement_count = 0;
+        let max_no_improvement = 50;
+        
+        for _iteration in 0..self.config.max_iterations {
+            // Compute gradient
+            let gradient = self.compute_cox_gradient(data, beta)?;
+            
+            // Check if gradient is reasonable
+            if gradient.iter().any(|&g| !g.is_finite()) {
+                break; // Stop if gradient becomes invalid
+            }
+            
+            // Apply regularization to gradient
+            let mut regularized_gradient = gradient.clone();
+            
+            // L2 penalty (Ridge)
+            if self.config.l2_penalty > 0.0 {
+                regularized_gradient = &regularized_gradient - &(self.config.l2_penalty * &*beta);
+            }
+            
+            // L1 penalty (Lasso) - use sign of current beta
+            if self.config.l1_penalty > 0.0 {
+                for i in 0..n_features {
+                    if beta[i].abs() > 1e-10 {  // Only apply L1 penalty if beta is not near zero
+                        regularized_gradient[i] -= self.config.l1_penalty * beta[i].signum();
+                    }
+                }
+            }
+            
+            // RMSprop update
+            if let Some(ref mut rmsprop_state) = self.rmsprop_state {
+                // Update moving average of squared gradients
+                rmsprop_state.v = &(self.config.beta2 * &rmsprop_state.v) + 
+                    &((1.0 - self.config.beta2) * &regularized_gradient.mapv(|x| x * x));
+                
+                // Update parameters with clipping to prevent exploding gradients
+                for i in 0..n_features {
+                    let update = self.config.learning_rate * regularized_gradient[i] / (rmsprop_state.v[i].sqrt() + self.config.epsilon);
                     // Clip updates to reasonable range
                     let clipped_update = update.max(-1.0).min(1.0);
                     beta[i] += clipped_update;
@@ -812,8 +923,65 @@ mod tests {
             ..Default::default()
         };
         
+        let config4 = OptimizationConfig {
+            optimizer_type: OptimizerType::RMSprop,
+            ..Default::default()
+        };
+        
         assert_eq!(config1.optimizer_type, OptimizerType::Adam);
         assert_eq!(config2.optimizer_type, OptimizerType::NewtonRaphson);
         assert_eq!(config3.optimizer_type, OptimizerType::CoordinateDescent);
+        assert_eq!(config4.optimizer_type, OptimizerType::RMSprop);
+    }
+    
+    #[test]
+    fn test_rmsprop_optimizer() {
+        let data = create_test_data();
+        let config = OptimizationConfig {
+            l1_penalty: 0.0,
+            l2_penalty: 0.0,
+            max_iterations: 500,
+            tolerance: 1e-4,  // Looser tolerance for RMSprop
+            optimizer_type: OptimizerType::RMSprop,
+            learning_rate: 0.1,  // Higher learning rate
+            beta1: 0.9,  // Not used in RMSprop but kept for consistency
+            beta2: 0.9,  // Decay rate for RMSprop
+            epsilon: 1e-8,
+        };
+        let mut optimizer = CoxOptimizer::new(config);
+        
+        let result = optimizer.optimize(&data);
+        if let Err(ref e) = result {
+            println!("RMSprop optimizer failed with error: {:?}", e);
+        }
+        assert!(result.is_ok());
+        
+        let beta = result.unwrap();
+        assert_eq!(beta.len(), 2);
+        assert!(beta.iter().all(|&x| x.is_finite()));
+    }
+    
+    #[test]
+    fn test_rmsprop_with_regularization() {
+        let data = create_test_data();
+        let config = OptimizationConfig {
+            l1_penalty: 0.01,
+            l2_penalty: 0.01,
+            max_iterations: 800,
+            tolerance: 1e-4,  // Looser tolerance for RMSprop
+            optimizer_type: OptimizerType::RMSprop,
+            learning_rate: 0.05,  // Moderate learning rate
+            beta1: 0.9,  // Not used in RMSprop but kept for consistency
+            beta2: 0.9,  // Decay rate for RMSprop
+            epsilon: 1e-8,
+        };
+        let mut optimizer = CoxOptimizer::new(config);
+        
+        let result = optimizer.optimize(&data);
+        assert!(result.is_ok());
+        
+        let beta = result.unwrap();
+        assert_eq!(beta.len(), 2);
+        assert!(beta.iter().all(|&x| x.is_finite()));
     }
 }

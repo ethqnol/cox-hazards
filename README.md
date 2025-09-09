@@ -10,7 +10,7 @@ A comprehensive, well-tested Rust library for Cox proportional hazards regressio
 
 - **Cox Proportional Hazards Model**: Full implementation with partial likelihood optimization
 - **Elastic Net Regularization**: L1 (Lasso) and L2 (Ridge) penalties for feature selection and regularization
-- **Multiple Optimization Algorithms**: Newton-Raphson, coordinate descent, and Adam optimizers
+- **Multiple Optimization Algorithms**: Newton-Raphson, coordinate descent, Adam, and RMSprop optimizers
 - **Comprehensive Metrics**: C-index, Harrell's C-index, log-likelihood, AIC, BIC
 - **Survival Predictions**: Risk scores, hazard ratios, and survival probabilities
 - **Robust Data Handling**: Proper treatment of censored observations and tied event times
@@ -80,7 +80,7 @@ lasso_model.fit(&data)?;
 elastic_model.fit(&data)?;
 ```
 
-### Adam Optimizer (New in v0.2.0)
+### Advanced Optimizers (New in v0.2.0)
 
 ```rust
 use cox_hazards::{CoxModel, OptimizerType};
@@ -94,7 +94,16 @@ let mut adam_model = CoxModel::new()
 
 adam_model.fit(&data)?;
 
-// Adam works well with regularization
+// Use RMSprop optimizer for stable convergence
+let mut rmsprop_model = CoxModel::new()
+    .with_optimizer(OptimizerType::RMSprop)
+    .with_learning_rate(0.1)
+    .with_adam_params(0.9, 0.9)  // beta1 (unused), beta2 (decay rate)
+    .with_elastic_net(0.5, 0.1);
+
+rmsprop_model.fit(&data)?;
+
+// Both optimizers work well with regularization
 let mut regularized_adam = CoxModel::new()
     .with_optimizer(OptimizerType::Adam)
     .with_elastic_net(0.5, 0.1)
@@ -170,7 +179,7 @@ let survival_probs = advanced_model.predict_survival(
 - `with_elastic_net(alpha, penalty)`: Set elastic net parameters
 - `with_optimizer(optimizer_type)`: Choose optimization algorithm
 - `with_learning_rate(rate)`: Set Adam learning rate
-- `with_adam_params(beta1, beta2)`: Configure Adam momentum parameters
+- `with_adam_params(beta1, beta2)`: Configure Adam/RMSprop parameters
 - `fit(data)`: Train the model
 - `predict(covariates)`: Get risk scores
 - `predict_hazard_ratios(covariates)`: Get hazard ratios
@@ -188,12 +197,14 @@ The `examples/` directory contains comprehensive examples:
 
 - **`basic_usage.rs`**: Introduction to all major features
 - **`cross_validation.rs`**: Cross-validation and hyperparameter tuning
+- **`rmsprop_example.rs`**: RMSprop optimizer usage and comparison with Adam
 
 Run examples with:
 
 ```bash
 cargo run --example basic_usage
 cargo run --example cross_validation
+cargo run --example rmsprop_example
 ```
 
 ## Mathematical Background

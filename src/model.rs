@@ -16,10 +16,10 @@ pub struct CoxModel {
     fitted: bool,                       // have we been fit yet?
     feature_names: Option<Vec<String>>, // optional feature labels
     optimizer_type: OptimizerType,      // which optimizer to use
-    learning_rate: f64,                 // learning rate for Adam
+    learning_rate: f64,                 // learning rate for Adam/RMSprop
     beta1: f64,                         // Adam momentum parameter
-    beta2: f64,                         // Adam RMSprop parameter
-    epsilon: f64,                       // Adam numerical stability
+    beta2: f64,                         // Adam/RMSprop decay parameter
+    epsilon: f64,                       // Adam/RMSprop numerical stability
 }
 
 impl Default for CoxModel {
@@ -93,20 +93,20 @@ impl CoxModel {
         self
     }
     
-    /// set learning rate for Adam optimizer
+    /// set learning rate for Adam/RMSprop optimizers
     pub fn with_learning_rate(mut self, lr: f64) -> Self {
         self.learning_rate = lr.max(0.0);
         self
     }
     
-    /// set Adam momentum parameters (beta1, beta2)
+    /// set Adam/RMSprop parameters (beta1 for Adam momentum, beta2 for decay rate)
     pub fn with_adam_params(mut self, beta1: f64, beta2: f64) -> Self {
         self.beta1 = beta1.clamp(0.0, 1.0);
         self.beta2 = beta2.clamp(0.0, 1.0);
         self
     }
     
-    /// set Adam numerical stability parameter
+    /// set Adam/RMSprop numerical stability parameter
     pub fn with_epsilon(mut self, eps: f64) -> Self {
         self.epsilon = eps.max(0.0);
         self
